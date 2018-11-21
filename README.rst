@@ -42,9 +42,8 @@ by the field's spec.
 As you can see, the float spec has been used to convert to an applicable
 regex and also convert the parsed string data back to the expected type.
 
-What about X?
-----------------------
-All of the similar libraries I've seen do not support enough of the Python
-string format spec, or use a modified spec, making them hard to remember. *pat*
-tries to do what you expect and supports only the standard string format spec,
-making it more familiar and easier to remember.
+Similar projects
+----------------
+
+- `parse <https://github.com/r1chardj0n3s/parse>`_
+- `Lucidity <https://gitlab.com/4degrees/lucidity>`_

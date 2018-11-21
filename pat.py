@@ -44,16 +44,18 @@ by the field's spec.
 As you can see, the float spec has been used to convert to an applicable
 regex and also convert the parsed string data back to the expected type.
 
-What about X?
-----------------------
-All of the similar libraries I've seen do not support enough of the Python
-string format spec, or use a modified spec, making them hard to remember. *pat*
-tries to do what you expect and supports only the standard string format spec,
-making it more familiar and easier to remember.
+Similar projects
+----------------
+
+- `parse <https://github.com/r1chardj0n3s/parse>`_
+- `Lucidity <https://gitlab.com/4degrees/lucidity>`_
 '''
 __version__ = '0.1.0'
+__author__ = 'Dan Bradham'
+__url__ = 'https://github.com/danbradham/pat'
 import string
 import re
+from collections import defaultdict
 
 START = 0
 END = 1
@@ -90,22 +92,21 @@ class Template(object):
     _cache_ = {}
     group_regex = '(?P<{}>{})'
     first_regex = '(?:\w:/)?[\w_/]+'
-    default_regex = '[\w_/]+'
+    default_regex = '[\w_-]+'
     type_regex_map = {
         'b': '\d+',
         'c': '\w',
-        'd': '\d+',
+        'd': '[-+]?\d+',
         'o': '\d+',
         'x': '[0-9a-z]+',
         'X': '[0-9A-Z]+',
-        'n': '\d+',
         'e': '\d*\.?\d+e[+-]\d+',
         'E': '\d*\.?\d+E[+-]\d+',
         'f': '[-+]?\d*\.?\d+',
         'F': '[-+]?\d*\.?\d+',
-        'g': '\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+e[+-]\d+',
-        'G': '\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+E[+-]\d+',
-        'n': '\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+e[+-]\d+',
+        'g': '[-+]?\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+e[+-]\d+',
+        'G': '[-+]?\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+E[+-]\d+',
+        'n': '[-+]?\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+e[+-]\d+',
         '%': '\d*\.?\d+%'
     }
     type_map = {
@@ -115,7 +116,6 @@ class Template(object):
         'o': lambda s: int(s, 8),
         'x': lambda s: int(s, 16),
         'X': lambda s: int(s, 16),
-        'n': int,
         'e': float,
         'E': float,
         'f': float,
@@ -133,19 +133,25 @@ class Template(object):
         return cls._cache_[pattern]
 
     def __init__(self, pattern):
+
         self.pattern = pattern
-        self.parsed_fields = self._parse_pattern()
-        self.regex = self._to_regex(self.parsed_fields)
+        self.parsed_fields = self._parse_pattern(pattern)
+        self.regex = self._to_regex(pattern, self.parsed_fields)
         self.fields = [f[0] for f in self.parsed_fields]
 
-    def _parse_pattern(self):
+    def _parse_pattern(self, pattern):
+
         fields = []
+        auto = False
+        manual = False
         pos_idx = 0
+        field_idx = 0
+        field_count = defaultdict(int)
         next_regex = self.first_regex
 
-        for lit, field, spec, conv in self.formatter.parse(self.pattern):
+        for lit, field, spec, conv in self.formatter.parse(pattern):
 
-            if pos_idx > 0:
+            if field_idx > 0:
                 next_regex = self.default_regex
 
             # Build original token
@@ -160,12 +166,20 @@ class Template(object):
             if not field:
                 field = pos_idx
                 group_name = 'POS' + str(pos_idx)
+                if manual:
+                    raise ValueError('Can not mix auto and manual numbering.')
+                auto = True
+                pos_idx += 1
             elif re.match('\d+', field):
                 group_name = 'POS' + str(pos_idx)
                 field = int(field)
+                if auto:
+                    raise ValueError('Can not mix auto and manual numbering.')
+                manual = True
+                pos_idx += 1
             else:
-                group_name = field + str(pos_idx)
-            pos_idx += 1
+                group_name = field + str(field_count[field])
+                field_count[field] += 1
 
             # Get type converter
             typ_char = None
@@ -177,13 +191,12 @@ class Template(object):
             typ_regex = self.type_regex_map.get(typ_char, next_regex)
             field_regex = self.group_regex.format(group_name, typ_regex)
             fields.append((field, group_name, field_regex, token, typ))
+            field_idx += 1
 
         return fields
 
-    def _to_regex(self, fields=None):
-        if not fields:
-            fields = self.parse_pattern()
-        regex = re.escape(self.pattern)
+    def _to_regex(self, pattern, fields):
+        regex = re.escape(pattern)
         for field, group_name, field_regex, token, typ in fields:
             regex = regex.replace(re.escape(token), field_regex, 1)
         return regex
@@ -210,6 +223,7 @@ class Template(object):
         Returns:
             dict - the parsed data
         '''
+
         fields = self.parsed_fields
         regex = self.regex
         data = None
