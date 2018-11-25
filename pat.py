@@ -4,45 +4,37 @@ pat
 ===
 *Parseable Templates* for Python.
 
-*pat* Templates are like standard python string templates but can also be used
-to parse strings. *pat* tries to parse strings using common sense and support
-as much of the string format spec as possible.
-
-Features:
-
-    - Supports named and positional fields
-    - Intelligently converts parsed data to Python types
-    - Caches templates to speed up repeat uses
+*pat* uses standard Python templates to parse data from strings. *pat* aims to
+use common sense while also supporting as much of the string template
+specification as possible. It supports both numbered and named fields and
+performs type conversion for all field type specifiers.
 
 What does it look like?
 -----------------------
-*pat* Templates look exactly like Python string templates.
 
 ::
 
     >>> import pat
-    >>> project = pat.Template('{mount}/{project}')
-    >>> path = project.format(mount='/mnt/projects', project='My_Project')
-    >>> project.parse(path)
+    >>> project = pat.compile('{mount}/{project}')
+    >>> project.format(mount='/mnt/projects', project='My_Project')
+    '/mnt/projects/My_Project'
+    >>> project.parse('/mnt/projects/My_Project')
     {'mount': '/mnt/projects', 'project': 'My_Project'}
 
 How does it work?
 ----------------
-*pat* converts a string template into a regex with named capture groups based
-on it's field names and specs. The regex is used to retrieve data from a
-string. Finally each bit of data retrieved is converted to the type described
-by the field's spec.
+*pat* converts a template string into a regex with named capture groups based
+on it's field names and type specifiers. The regex is used to retrieve data
+from a string. Finally each bit of data retrieved is converted to the type
+described by the field's spec.
 
 ::
 
-    >>> floaty = pat.Template('{:0.2f}')
+    >>> floaty = pat.compile('{:0.2f}')
     >>> floaty.regex
     '(?P<POS0>[-+]?\d*\.?\d+)'
     >>> floaty.parse('100.10')
     {0: 100.10}
-
-As you can see, the float spec has been used to convert to an applicable
-regex and also convert the parsed string data back to the expected type.
 
 Similar projects
 ----------------
@@ -53,6 +45,8 @@ Similar projects
 __version__ = '0.1.0'
 __author__ = 'Dan Bradham'
 __url__ = 'https://github.com/danbradham/pat'
+__all__ = ['START', 'END', 'BOTH', 'ANY', 'compile', 'parse', 'format']
+
 import string
 import re
 from collections import defaultdict
@@ -68,10 +62,10 @@ class Template(object):
     Wraps a template string to provide parse functionality.
 
     Arguments:
-        pattern (str): Python template string
+        string (str): Python template string
 
     Attributes:
-        pattern (str): template string
+        string (str): template string
         fields (list): list of the template string's fields
         parsed_fields (list): List of data for each field
             [(field, group_name, field_regex, token, typ)...]
@@ -89,19 +83,19 @@ class Template(object):
         {'asset_type': 'props', 'asset': 'chair'}
     '''
 
-    _cache_ = {}
+    _cache = {}
     group_regex = '(?P<{}>{})'
     first_regex = '(?:\w:/)?[\w_/]+'
     default_regex = '[\w_-]+'
     type_regex_map = {
-        'b': '\d+',
-        'c': '\w',
+        'b': '(0[Bb])?[01]+',
+        'c': '.|\\\\x[a-f0-9]{2}|\s',
         'd': '[-+]?\d+',
-        'o': '\d+',
-        'x': '[0-9a-z]+',
-        'X': '[0-9A-Z]+',
-        'e': '\d*\.?\d+e[+-]\d+',
-        'E': '\d*\.?\d+E[+-]\d+',
+        'o': '(0[Oo])?[0-7]+',
+        'x': '(0[Xx])?[0-9a-zA-Z]+',
+        'X': '(0[Xx])?[0-9a-zA-Z]+',
+        'e': '\d*\.?\d+[eE][+-]\d+',
+        'E': '\d*\.?\d+[eE][+-]\d+',
         'f': '[-+]?\d*\.?\d+',
         'F': '[-+]?\d*\.?\d+',
         'g': '[-+]?\d+|\-?inf|\-?0|nan|[-+]?\d*\.?\d+|\d*\.?\d+e[+-]\d+',
@@ -111,7 +105,7 @@ class Template(object):
     }
     type_map = {
         'b': lambda s: int(s, 2),
-        'c': chr,
+        'c': ord,
         'd': int,
         'o': lambda s: int(s, 8),
         'x': lambda s: int(s, 16),
@@ -127,20 +121,13 @@ class Template(object):
     }
     formatter = string.Formatter()
 
-    def __new__(cls, pattern):
-        if pattern not in cls._cache_:
-            cls._cache_[pattern] = object.__new__(cls, pattern)
-        return cls._cache_[pattern]
-
-    def __init__(self, pattern):
-
-        self.pattern = pattern
-        self.parsed_fields = self._parse_pattern(pattern)
-        self.regex = self._to_regex(pattern, self.parsed_fields)
+    def __init__(self, string):
+        self.string = string
+        self.parsed_fields = self._parse_string(string)
+        self.regex = self._to_regex(string, self.parsed_fields)
         self.fields = [f[0] for f in self.parsed_fields]
 
-    def _parse_pattern(self, pattern):
-
+    def _parse_string(self, string):
         fields = []
         auto = False
         manual = False
@@ -149,7 +136,7 @@ class Template(object):
         field_count = defaultdict(int)
         next_regex = self.first_regex
 
-        for lit, field, spec, conv in self.formatter.parse(pattern):
+        for lit, field, spec, conv in self.formatter.parse(string):
 
             if field_idx > 0:
                 next_regex = self.default_regex
@@ -195,8 +182,8 @@ class Template(object):
 
         return fields
 
-    def _to_regex(self, pattern, fields):
-        regex = re.escape(pattern)
+    def _to_regex(self, string, fields):
+        regex = re.escape(string)
         for field, group_name, field_regex, token, typ in fields:
             regex = regex.replace(re.escape(token), field_regex, 1)
         return regex
@@ -211,7 +198,7 @@ class Template(object):
             formatted string
         '''
 
-        return self.pattern.format(*args, **kwargs)
+        return self.string.format(*args, **kwargs)
 
     def parse(self, string, anchor=END):
         '''Parse a string using this template.
@@ -248,7 +235,7 @@ class Template(object):
         for field, group_name, field_regex, token, typ in fields:
             value = data.pop(group_name)
             if value:
-                value = value.strip()
+                value = value
                 if typ:
                     value = typ(value)
             data[field] = value
@@ -256,13 +243,63 @@ class Template(object):
         return data
 
 
-def parse(string, templates, anchor=END):
+def compile(string, cache={}):
+    '''Creates a caches a Template object.
+
+    Arguments:
+        string (str) - Template string to compile
+
+    Returns:
+        Template object
+    '''
+
+    if string not in cache:
+        cache[string] = Template(string)
+    return cache[string]
+
+
+def format(template, *args, **kwargs):
+    '''Format a template using the provided *args and **kwargs
+
+    See also:
+        str.format()
+
+    Returns:
+        formatted string
+    '''
+
+    return template.format(*args, **kwargs)
+
+
+def parse(string, template, anchor=END):
+    '''Parse a string using a template.
+
+    Examples:
+        >>> parse('1, 2, 3', '{:d}, {:d}, {:d}')
+        {0: 1, 1: 2, 2: 3}
+
+    Arguments:
+        string (str) - String to parse
+        template (str) - Template string used to perform parse
+        anchor (int) - 0.START, 1.END, 2.BOTH, 3.ANY
+
+    Returns:
+        dict - parsed data
+    '''
+
+    if not isinstance(template, Template):
+        template = compile(template)
+
+    return template.parse(string)
+
+
+def best_parse(string, templates, anchor=END):
     '''Parse a string using a dict of templates and return the best parse.
 
     The best parse is the template that returned the most data.
 
     Examples:
-        >>> parse('100%', {'percent': '{:0.2%}'})
+        >>> parse('100%', {'percent': '{:0.2%}', 'integer': '{:d}'})
         # 'percent', {0: 100.00}
 
     Arguments:
@@ -275,12 +312,12 @@ def parse(string, templates, anchor=END):
     '''
 
     best_parse = '', {}
-    for name, tmpl in templates.items():
+    for name, template in templates.items():
 
-        if not isinstance(tmpl, Template):
-            tmpl = Template(tmpl)
+        if not isinstance(template, Template):
+            template = compile(template)
 
-        data = tmpl.parse(string)
+        data = template.parse(string)
 
         if data and len(data.keys()) > len(best_parse[1].keys()):
             best_parse = name, data
