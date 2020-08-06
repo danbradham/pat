@@ -42,7 +42,7 @@ Similar projects
 - `parse <https://github.com/r1chardj0n3s/parse>`_
 - `Lucidity <https://gitlab.com/4degrees/lucidity>`_
 '''
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __author__ = 'Dan Bradham'
 __url__ = 'https://github.com/danbradham/pat'
 __all__ = ['START', 'END', 'BOTH', 'ANY', 'compile', 'parse', 'format']
@@ -137,6 +137,9 @@ class Template(object):
         next_regex = self.first_regex
 
         for lit, field, spec, conv in self.formatter.parse(string):
+
+            if field is None:
+                continue
 
             if field_idx > 0:
                 next_regex = self.default_regex

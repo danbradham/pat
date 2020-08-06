@@ -64,7 +64,7 @@ def test_type_specifiers():
     ]
 
     # c
-    for i in xrange(256):
+    for i in range(256):
         string = chr(i)
         tests.append((chr(i), '{:c}', {0: i}))
 
